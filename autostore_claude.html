@@ -1,0 +1,837 @@
+function updateRobots() {
+            if (isPaused) return;
+            
+            robots.forEach(robot => {
+                // Update status indicator color based on state
+                if (robot.indicator) {
+                    switch (robot.state) {
+                        case ROBOT_STATES.IDLE:
+                            robot.indicator.material.color.setHex(0x64748b);
+                            robot.indicator.material.emissive.setHex(0x1a1a1a);
+                            break;
+                        case ROBOT_STATES.MOVING<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoStore 3D Grid with Live Bot Tracking</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #0f0f23 100%);
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+        
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(15, 15, 35, 0.95);
+            padding: 25px;
+            border-radius: 16px;
+            color: white;
+            z-index: 100;
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 255, 200, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 255, 200, 0.1);
+        }
+        
+        #stats {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(15, 15, 35, 0.95);
+            padding: 25px;
+            border-radius: 16px;
+            color: white;
+            z-index: 100;
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 255, 200, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 255, 200, 0.1);
+            min-width: 220px;
+        }
+        
+        .control-group {
+            margin: 10px 0;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+            color: #ccc;
+        }
+        
+        input[type="range"] {
+            width: 200px;
+            margin: 5px 0;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #00ff88 0%, #00cc66 100%);
+            color: #0a0a0f;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 5px;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            font-size: 14px;
+            box-shadow: 0 4px 15px rgba(0, 255, 136, 0.3);
+        }
+        
+        button:hover {
+            background: linear-gradient(135deg, #00cc66 0%, #00ff88 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 255, 136, 0.4);
+        }
+        
+        button.active {
+            background: linear-gradient(135deg, #ff3366 0%, #ff0044 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(255, 51, 102, 0.3);
+        }
+        
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .stat-label {
+            color: #ccc;
+        }
+        
+        .stat-value {
+            color: #00ff88;
+            font-weight: 700;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+        
+        .bot-status {
+            margin: 5px 0;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+        
+        .bot-idle { background: rgba(100, 116, 139, 0.4); border-left: 3px solid #64748b; }
+        .bot-moving { background: rgba(0, 255, 136, 0.3); border-left: 3px solid #00ff88; }
+        .bot-digging { background: rgba(255, 184, 0, 0.3); border-left: 3px solid #ffb800; }
+        .bot-carrying { background: rgba(255, 51, 102, 0.3); border-left: 3px solid #ff3366; }
+        
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 24px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="loading">Loading AutoStore Grid...</div>
+        <div id="controls">
+            <h3>AutoStore Controls</h3>
+            <div class="control-group">
+                <label>Grid Size:</label>
+                <input type="range" id="gridSize" min="8" max="20" value="12">
+                <span id="gridSizeValue">12x12</span>
+            </div>
+            <div class="control-group">
+                <label>Grid Height:</label>
+                <input type="range" id="gridHeight" min="8" max="20" value="12">
+                <span id="gridHeightValue">12 levels</span>
+            </div>
+            <div class="control-group">
+                <label>Robot Count:</label>
+                <input type="range" id="robotCount" min="2" max="20" value="8">
+                <span id="robotCountValue">8 robots</span>
+            </div>
+            <div class="control-group">
+                <label>Robot Speed:</label>
+                <input type="range" id="robotSpeed" min="0.5" max="3" step="0.1" value="1.5">
+                <span id="robotSpeedValue">1.5x</span>
+            </div>
+            <div class="control-group">
+                <button id="pausePlay">Pause</button>
+                <button id="resetGrid">Reset Grid</button>
+            </div>
+        </div>
+        
+        <div id="stats">
+            <h3>System Status</h3>
+            <div class="stat-row">
+                <span class="stat-label">Grid Cells:</span>
+                <span class="stat-value" id="totalCells">144</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">Total Bins:</span>
+                <span class="stat-value" id="totalBins">1,728</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">Storage Density:</span>
+                <span class="stat-value" id="density">4x</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">Active Robots:</span>
+                <span class="stat-value" id="activeRobots">8</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">Operations/Min:</span>
+                <span class="stat-value" id="operationsPerMin">0</span>
+            </div>
+            <h4>Robot Status</h4>
+            <div id="robotStatus"></div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let scene, camera, renderer, controls;
+        let grid = [];
+        let robots = [];
+        let bins = [];
+        let gridSize = 12;
+        let gridHeight = 12;
+        let robotCount = 8;
+        let robotSpeed = 1.5;
+        let isPaused = false;
+        let operationCount = 0;
+        let lastOperationTime = Date.now();
+        
+        // Robot states
+        const ROBOT_STATES = {
+            IDLE: 'idle',
+            MOVING: 'moving',
+            DIGGING: 'digging',
+            CARRYING: 'carrying'
+        };
+        
+        // Initialize the scene
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x050510);
+            scene.fog = new THREE.Fog(0x050510, 50, 200);
+            
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(30, 40, 30);
+            camera.lookAt(0, 0, 0);
+            
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.setClearColor(0x050510);
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.2;
+            document.getElementById('container').appendChild(renderer.domElement);
+            
+            // Enhanced lighting setup
+            const ambientLight = new THREE.AmbientLight(0x1a1a2e, 0.4);
+            scene.add(ambientLight);
+            
+            // Main directional light
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            directionalLight.position.set(50, 100, 50);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 4096;
+            directionalLight.shadow.mapSize.height = 4096;
+            directionalLight.shadow.camera.near = 0.1;
+            directionalLight.shadow.camera.far = 200;
+            directionalLight.shadow.camera.left = -50;
+            directionalLight.shadow.camera.right = 50;
+            directionalLight.shadow.camera.top = 50;
+            directionalLight.shadow.camera.bottom = -50;
+            scene.add(directionalLight);
+            
+            // Accent lights for futuristic feel
+            const accentLight1 = new THREE.PointLight(0x00ffcc, 1.5, 100);
+            accentLight1.position.set(-25, 25, -25);
+            scene.add(accentLight1);
+            
+            const accentLight2 = new THREE.PointLight(0x0088ff, 1.2, 80);
+            accentLight2.position.set(25, 20, 25);
+            scene.add(accentLight2);
+            
+            const accentLight3 = new THREE.PointLight(0xff3366, 0.8, 60);
+            accentLight3.position.set(0, 30, 0);
+            scene.add(accentLight3);
+            
+            // Create grid
+            createGrid();
+            createRobots();
+            
+            // Mouse controls
+            addMouseControls();
+            
+            // Event listeners
+            setupEventListeners();
+            
+            // Hide loading
+            document.getElementById('loading').style.display = 'none';
+            
+            // Start animation
+            animate();
+        }
+        
+        function createGrid() {
+            // Clear existing grid
+            clearGrid();
+            
+            // Enhanced grid framework (premium aluminum structure)
+            const frameGeometry = new THREE.BoxGeometry(0.08, gridHeight * 2, 0.08);
+            const frameMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0xe6e6fa,
+                shininess: 300,
+                specular: 0x666666,
+                transparent: true,
+                opacity: 0.95
+            });
+            
+            // Create vertical columns with enhanced materials
+            for (let x = 0; x <= gridSize; x++) {
+                for (let z = 0; z <= gridSize; z++) {
+                    const column = new THREE.Mesh(frameGeometry, frameMaterial);
+                    column.position.set(x * 2 - gridSize, gridHeight, z * 2 - gridSize);
+                    column.castShadow = true;
+                    column.receiveShadow = true;
+                    scene.add(column);
+                    grid.push(column);
+                }
+            }
+            
+            // Create enhanced robot tracks with glowing effect
+            const railGeometry = new THREE.BoxGeometry(gridSize * 2, 0.15, 0.15);
+            const railMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x00ffcc,
+                shininess: 200,
+                specular: 0x444444,
+                emissive: 0x003322,
+                transparent: true,
+                opacity: 0.9
+            });
+            
+            // X-direction rails
+            for (let z = 0; z <= gridSize; z++) {
+                const rail = new THREE.Mesh(railGeometry, railMaterial);
+                rail.position.set(0, gridHeight * 2 + 0.5, z * 2 - gridSize);
+                rail.castShadow = true;
+                scene.add(rail);
+                grid.push(rail);
+            }
+            
+            // Z-direction rails
+            for (let x = 0; x <= gridSize; x++) {
+                const rail = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, gridSize * 2), railMaterial);
+                rail.position.set(x * 2 - gridSize, gridHeight * 2 + 0.5, 0);
+                rail.castShadow = true;
+                scene.add(rail);
+                grid.push(rail);
+            }
+            
+            // Create bins in cells
+            createBins();
+            
+            // Update stats
+            updateStats();
+        }
+        
+        function createBins() {
+            // Clear existing bins
+            bins.forEach(bin => scene.remove(bin));
+            bins = [];
+            
+            // Enhanced bin geometry with rounded edges
+            const binGeometry = new THREE.BoxGeometry(1.7, 1.7, 1.7);
+            const edgeGeometry = new THREE.EdgesGeometry(binGeometry);
+            
+            // Futuristic bin materials with distinct colors and effects
+            const binMaterials = [
+                new THREE.MeshPhongMaterial({ 
+                    color: 0x4a90e2, 
+                    shininess: 150,
+                    specular: 0x225588,
+                    transparent: true,
+                    opacity: 0.85
+                }),
+                new THREE.MeshPhongMaterial({ 
+                    color: 0x7b68ee, 
+                    shininess: 150,
+                    specular: 0x443377,
+                    transparent: true,
+                    opacity: 0.85
+                }),
+                new THREE.MeshPhongMaterial({ 
+                    color: 0x20b2aa, 
+                    shininess: 150,
+                    specular: 0x115544,
+                    transparent: true,
+                    opacity: 0.85
+                }),
+                new THREE.MeshPhongMaterial({ 
+                    color: 0x32cd32, 
+                    shininess: 150,
+                    specular: 0x226622,
+                    transparent: true,
+                    opacity: 0.85
+                }),
+                new THREE.MeshPhongMaterial({ 
+                    color: 0xff6347, 
+                    shininess: 150,
+                    specular: 0x883322,
+                    transparent: true,
+                    opacity: 0.85
+                })
+            ];
+            
+            // Create bins for each cell
+            for (let x = 0; x < gridSize; x++) {
+                for (let z = 0; z < gridSize; z++) {
+                    const binsInCell = Math.floor(Math.random() * gridHeight) + 1;
+                    
+                    for (let y = 0; y < binsInCell; y++) {
+                        const material = binMaterials[Math.floor(Math.random() * binMaterials.length)];
+                        const bin = new THREE.Mesh(binGeometry, material);
+                        
+                        // Add glowing edges to bins
+                        const edges = new THREE.LineSegments(edgeGeometry, 
+                            new THREE.LineBasicMaterial({ 
+                                color: 0x00ffcc,
+                                transparent: true,
+                                opacity: 0.3
+                            })
+                        );
+                        bin.add(edges);
+                        
+                        bin.position.set(
+                            x * 2 - gridSize + 1,
+                            y * 2 + 1,
+                            z * 2 - gridSize + 1
+                        );
+                        bin.castShadow = true;
+                        bin.receiveShadow = true;
+                        
+                        // Add bin metadata
+                        bin.userData = {
+                            cellX: x,
+                            cellZ: z,
+                            level: y,
+                            id: `bin_${x}_${z}_${y}`
+                        };
+                        
+                        scene.add(bin);
+                        bins.push(bin);
+                    }
+                }
+            }
+        }
+        
+        function createRobots() {
+            // Clear existing robots
+            robots.forEach(robot => scene.remove(robot.mesh));
+            robots = [];
+            
+            // Create robots with distinct futuristic design
+            for (let i = 0; i < robotCount; i++) {
+                const robotGroup = new THREE.Group();
+                
+                // Main robot body - sleek and futuristic
+                const bodyGeometry = new THREE.BoxGeometry(1.4, 0.6, 1.4);
+                const bodyMaterial = new THREE.MeshPhongMaterial({ 
+                    color: 0x1a1a1a,
+                    shininess: 200,
+                    specular: 0x666666,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                body.castShadow = true;
+                body.receiveShadow = true;
+                robotGroup.add(body);
+                
+                // Add glowing edges to robot body
+                const bodyEdges = new THREE.EdgesGeometry(bodyGeometry);
+                const bodyWireframe = new THREE.LineSegments(bodyEdges, 
+                    new THREE.LineBasicMaterial({ 
+                        color: 0xff3366,
+                        transparent: true,
+                        opacity: 0.8
+                    })
+                );
+                robotGroup.add(bodyWireframe);
+                
+                // Robot lift mechanism - more visible and distinct
+                const liftGeometry = new THREE.BoxGeometry(0.4, 1.2, 0.4);
+                const liftMaterial = new THREE.MeshPhongMaterial({ 
+                    color: 0xff3366,
+                    shininess: 300,
+                    specular: 0x888888,
+                    emissive: 0x220011
+                });
+                const lift = new THREE.Mesh(liftGeometry, liftMaterial);
+                lift.position.set(0, 0.6, 0);
+                lift.castShadow = true;
+                robotGroup.add(lift);
+                
+                // Add status indicator light
+                const indicatorGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+                const indicatorMaterial = new THREE.MeshPhongMaterial({ 
+                    color: 0x00ff88,
+                    emissive: 0x004422,
+                    shininess: 100
+                });
+                const indicator = new THREE.Mesh(indicatorGeometry, indicatorMaterial);
+                indicator.position.set(0, 0.5, 0.8);
+                robotGroup.add(indicator);
+                
+                // Add robot wheels/tracks for more realistic appearance
+                const wheelGeometry = new THREE.CylinderGeometry(0.2, 0.2, 0.1, 12);
+                const wheelMaterial = new THREE.MeshPhongMaterial({ 
+                    color: 0x333333,
+                    shininess: 50
+                });
+                
+                // Four wheels
+                const positions = [
+                    [-0.5, -0.2, -0.5],
+                    [0.5, -0.2, -0.5],
+                    [-0.5, -0.2, 0.5],
+                    [0.5, -0.2, 0.5]
+                ];
+                
+                positions.forEach(pos => {
+                    const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+                    wheel.position.set(pos[0], pos[1], pos[2]);
+                    wheel.rotation.z = Math.PI / 2;
+                    robotGroup.add(wheel);
+                });
+                
+                // Position robot on grid
+                robotGroup.position.set(
+                    Math.random() * (gridSize * 2) - gridSize,
+                    gridHeight * 2 + 1.2,
+                    Math.random() * (gridSize * 2) - gridSize
+                );
+                
+                scene.add(robotGroup);
+                
+                robots.push({
+                    mesh: robotGroup,
+                    id: `robot_${i}`,
+                    state: ROBOT_STATES.IDLE,
+                    target: null,
+                    path: [],
+                    speed: robotSpeed,
+                    carryingBin: null,
+                    taskTimer: 0,
+                    gridX: Math.floor((robotGroup.position.x + gridSize) / 2),
+                    gridZ: Math.floor((robotGroup.position.z + gridSize) / 2),
+                    indicator: indicator
+                });
+            }
+        }
+        
+        function clearGrid() {
+            grid.forEach(item => scene.remove(item));
+            grid = [];
+            bins.forEach(bin => scene.remove(bin));
+            bins = [];
+        }
+        
+        function addMouseControls() {
+            let mouseX = 0, mouseY = 0;
+            let isMouseDown = false;
+            let targetRotationX = 0, targetRotationY = 0;
+            let cameraDistance = 60;
+            
+            document.addEventListener('mousedown', (e) => {
+                isMouseDown = true;
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            });
+            
+            document.addEventListener('mouseup', () => {
+                isMouseDown = false;
+            });
+            
+            document.addEventListener('mousemove', (e) => {
+                if (!isMouseDown) return;
+                
+                const deltaX = e.clientX - mouseX;
+                const deltaY = e.clientY - mouseY;
+                
+                targetRotationY += deltaX * 0.01;
+                targetRotationX += deltaY * 0.01;
+                
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            });
+            
+            document.addEventListener('wheel', (e) => {
+                cameraDistance += e.deltaY * 0.1;
+                cameraDistance = Math.max(20, Math.min(100, cameraDistance));
+            });
+            
+            // Update camera position
+            function updateCamera() {
+                camera.position.x = Math.cos(targetRotationY) * Math.cos(targetRotationX) * cameraDistance;
+                camera.position.y = Math.sin(targetRotationX) * cameraDistance + 20;
+                camera.position.z = Math.sin(targetRotationY) * Math.cos(targetRotationX) * cameraDistance;
+                camera.lookAt(0, 10, 0);
+            }
+            
+            setInterval(updateCamera, 16);
+        }
+        
+        function setupEventListeners() {
+            document.getElementById('gridSize').addEventListener('input', (e) => {
+                gridSize = parseInt(e.target.value);
+                document.getElementById('gridSizeValue').textContent = `${gridSize}x${gridSize}`;
+                createGrid();
+            });
+            
+            document.getElementById('gridHeight').addEventListener('input', (e) => {
+                gridHeight = parseInt(e.target.value);
+                document.getElementById('gridHeightValue').textContent = `${gridHeight} levels`;
+                createGrid();
+            });
+            
+            document.getElementById('robotCount').addEventListener('input', (e) => {
+                robotCount = parseInt(e.target.value);
+                document.getElementById('robotCountValue').textContent = `${robotCount} robots`;
+                createRobots();
+            });
+            
+            document.getElementById('robotSpeed').addEventListener('input', (e) => {
+                robotSpeed = parseFloat(e.target.value);
+                document.getElementById('robotSpeedValue').textContent = `${robotSpeed}x`;
+                robots.forEach(robot => robot.speed = robotSpeed);
+            });
+            
+            document.getElementById('pausePlay').addEventListener('click', () => {
+                isPaused = !isPaused;
+                document.getElementById('pausePlay').textContent = isPaused ? 'Play' : 'Pause';
+                document.getElementById('pausePlay').classList.toggle('active', isPaused);
+            });
+            
+            document.getElementById('resetGrid').addEventListener('click', () => {
+                createGrid();
+                createRobots();
+            });
+            
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+        
+        function updateRobots() {
+            if (isPaused) return;
+            
+            robots.forEach(robot => {
+                // Update robot behavior based on state
+                switch (robot.state) {
+                    case ROBOT_STATES.IDLE:
+                        // Assign new task randomly
+                        if (Math.random() < 0.02) {
+                            assignRandomTask(robot);
+                        }
+                        break;
+                        
+                    case ROBOT_STATES.MOVING:
+                        moveRobot(robot);
+                        break;
+                        
+                    case ROBOT_STATES.DIGGING:
+                        performDigging(robot);
+                        break;
+                        
+                    case ROBOT_STATES.CARRYING:
+                        moveWithBin(robot);
+                        break;
+                }
+            });
+        }
+        
+        function assignRandomTask(robot) {
+            // Select random target cell
+            const targetX = Math.floor(Math.random() * gridSize);
+            const targetZ = Math.floor(Math.random() * gridSize);
+            
+            robot.target = { x: targetX, z: targetZ };
+            robot.state = ROBOT_STATES.MOVING;
+            
+            // Create path to target
+            robot.path = [
+                {
+                    x: targetX * 2 - gridSize,
+                    z: targetZ * 2 - gridSize
+                }
+            ];
+        }
+        
+        function moveRobot(robot) {
+            if (robot.path.length === 0) {
+                robot.state = ROBOT_STATES.DIGGING;
+                robot.taskTimer = 0;
+                return;
+            }
+            
+            const target = robot.path[0];
+            const dx = target.x - robot.mesh.position.x;
+            const dz = target.z - robot.mesh.position.z;
+            const distance = Math.sqrt(dx * dx + dz * dz);
+            
+            if (distance < 0.1) {
+                robot.path.shift();
+                robot.gridX = Math.floor((robot.mesh.position.x + gridSize) / 2);
+                robot.gridZ = Math.floor((robot.mesh.position.z + gridSize) / 2);
+            } else {
+                robot.mesh.position.x += (dx / distance) * robot.speed * 0.1;
+                robot.mesh.position.z += (dz / distance) * robot.speed * 0.1;
+            }
+        }
+        
+        function performDigging(robot) {
+            robot.taskTimer += 1;
+            
+            // Simulate digging animation
+            robot.mesh.rotation.y += 0.1;
+            
+            if (robot.taskTimer > 60) { // 1 second at 60fps
+                // Find a bin to pick up
+                const binToPickup = bins.find(bin => 
+                    bin.userData.cellX === robot.gridX && 
+                    bin.userData.cellZ === robot.gridZ
+                );
+                
+                if (binToPickup) {
+                    robot.carryingBin = binToPickup;
+                    robot.state = ROBOT_STATES.CARRYING;
+                    
+                    // Lift the bin
+                    binToPickup.position.y = robot.mesh.position.y + 2;
+                    
+                    // Assign return destination
+                    const returnX = Math.floor(Math.random() * gridSize);
+                    const returnZ = Math.floor(Math.random() * gridSize);
+                    robot.target = { x: returnX, z: returnZ };
+                    robot.path = [
+                        {
+                            x: returnX * 2 - gridSize,
+                            z: returnZ * 2 - gridSize
+                        }
+                    ];
+                    
+                    operationCount++;
+                } else {
+                    robot.state = ROBOT_STATES.IDLE;
+                }
+                
+                robot.taskTimer = 0;
+                robot.mesh.rotation.y = 0;
+            }
+        }
+        
+        function moveWithBin(robot) {
+            if (robot.path.length === 0) {
+                // Drop the bin
+                if (robot.carryingBin) {
+                    robot.carryingBin.position.x = robot.mesh.position.x;
+                    robot.carryingBin.position.z = robot.mesh.position.z;
+                    robot.carryingBin.position.y = 1;
+                    robot.carryingBin = null;
+                }
+                robot.state = ROBOT_STATES.IDLE;
+                return;
+            }
+            
+            const target = robot.path[0];
+            const dx = target.x - robot.mesh.position.x;
+            const dz = target.z - robot.mesh.position.z;
+            const distance = Math.sqrt(dx * dx + dz * dz);
+            
+            if (distance < 0.1) {
+                robot.path.shift();
+                robot.gridX = Math.floor((robot.mesh.position.x + gridSize) / 2);
+                robot.gridZ = Math.floor((robot.mesh.position.z + gridSize) / 2);
+            } else {
+                robot.mesh.position.x += (dx / distance) * robot.speed * 0.08;
+                robot.mesh.position.z += (dz / distance) * robot.speed * 0.08;
+                
+                // Move the carried bin with the robot
+                if (robot.carryingBin) {
+                    robot.carryingBin.position.x = robot.mesh.position.x;
+                    robot.carryingBin.position.z = robot.mesh.position.z;
+                }
+            }
+        }
+        
+        function updateStats() {
+            const totalCells = gridSize * gridSize;
+            const totalBins = bins.length;
+            const density = Math.round((totalBins / totalCells) * 10) / 10;
+            const activeRobots = robots.filter(r => r.state !== ROBOT_STATES.IDLE).length;
+            
+            // Calculate operations per minute
+            const now = Date.now();
+            const timeDiff = (now - lastOperationTime) / 1000 / 60; // minutes
+            const operationsPerMin = timeDiff > 0 ? Math.round(operationCount / timeDiff) : 0;
+            
+            if (timeDiff > 1) { // Reset every minute
+                operationCount = 0;
+                lastOperationTime = now;
+            }
+            
+            document.getElementById('totalCells').textContent = totalCells.toLocaleString();
+            document.getElementById('totalBins').textContent = totalBins.toLocaleString();
+            document.getElementById('density').textContent = `${density}x`;
+            document.getElementById('activeRobots').textContent = activeRobots;
+            document.getElementById('operationsPerMin').textContent = operationsPerMin;
+            
+            // Update robot status
+            const robotStatusEl = document.getElementById('robotStatus');
+            robotStatusEl.innerHTML = '';
+            
+            robots.forEach((robot, index) => {
+                const statusEl = document.createElement('div');
+                statusEl.className = `bot-status bot-${robot.state}`;
+                statusEl.textContent = `Robot ${index + 1}: ${robot.state.toUpperCase()}`;
+                robotStatusEl.appendChild(statusEl);
+            });
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            updateRobots();
+            updateStats();
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Initialize when page loads
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>

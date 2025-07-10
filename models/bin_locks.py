@@ -4,7 +4,7 @@ from db.database import Base
 
 class BinLock(Base):
     __tablename__ = "bin_locks"
-    bin_id = Column(Integer, ForeignKey("bins.bin_id"), primary_key=True)
-    used_by = Column(Integer, ForeignKey("bots.bot_id"))
+    id = Column(Integer, ForeignKey("bins.id"), primary_key=True)
+    used_by = Column(Integer, ForeignKey("bots.id"))
     status = Column(String, nullable=False)
     waiting_list = Column(ARRAY(Integer), default=list) 

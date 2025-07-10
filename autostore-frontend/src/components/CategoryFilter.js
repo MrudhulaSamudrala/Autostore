@@ -1,7 +1,16 @@
 import React from 'react';
 
 const categories = [
-  'All', 'Electronics', 'Grocery', 'Snacks', 'Drinks', 'Personal Care', 'Household'
+  'All',
+  'Personal Care',
+  'Grocery',
+  'Household Essentials',
+  'Snacks & Beverages',
+  'Pharma & Wellness',
+  'Packaged Foods',
+  'Baby Care',
+  'Toys',
+  'Pet Supplies'
 ];
 
 export default function CategoryFilter({ selected, onSelect }) {
@@ -19,3 +28,5 @@ export default function CategoryFilter({ selected, onSelect }) {
     </div>
   );
 } 
+
+// 'Household essentials', 'Snacks & Beverages',  'Pet Supplies', 'Package Foods', 'Baby Care'

@@ -6,6 +6,7 @@ const links = [
   { name: 'Orders', icon: <FaListAlt />, path: '/orders' },
   { name: 'Bins', icon: <FaBoxOpen />, path: '/bins' },
   { name: 'Bots', icon: <FaRobot />, path: '/bots' },
+  { name: '3D Bots', icon: <FaRobot style={{ filter: 'drop-shadow(0 0 2px #6366f1)' }} />, path: '/3d-bots' },
   { name: 'Sales Chart', icon: <FaChartBar />, path: '/sales' },
 ];
 

@@ -1,31 +1,56 @@
-import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import axios from 'axios';
+import React, { useState } from 'react';
 
-export default function OrderStatusPage() {
-  const { orderId } = useParams();
-  const [status, setStatus] = useState('pending');
+function PlaceOrder({ selectedProductIds }) {
+  const [orderInfo, setOrderInfo] = useState(null);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(false);
 
-  useEffect(() => {
-    let interval;
-    if (orderId) {
-      interval = setInterval(() => {
-        axios.get(`http://localhost:8000/orders/`).then(res => {
-          const order = res.data.find(o => o.order_id === Number(orderId));
-          if (order) setStatus(order.status);
-        }).catch(() => setError('Failed to fetch order status'));
-      }, 2000);
+  const handlePlaceOrder = async () => {
+    setError(null);
+    setOrderInfo(null);
+    setSuccess(false);
+    try {
+      const response = await fetch("http://localhost:8000/orders/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product_ids: selectedProductIds }),
+      });
+      if (!response.ok) {
+        throw new Error("Order failed");
+      }
+      const data = await response.json();
+      setOrderInfo(data);
+      setSuccess(true);
+    } catch (err) {
+      setError(err.message);
     }
-    return () => clearInterval(interval);
-  }, [orderId]);
+  };
 
   return (
+    <div>
+      <button onClick={handlePlaceOrder}>Place Order</button>
+      {success && orderInfo && (
+        <div className="mt-2 p-2 border rounded bg-green-50">
+          <div>Order placed!</div>
+          <div>Order ID: {orderInfo.order_id}</div>
+          <div>Status: {orderInfo.status}</div>
+          <div>
+            Assigned Bot: {orderInfo.assigned_bot_id ? orderInfo.assigned_bot_id : "Not assigned yet"}
+          </div>
+        </div>
+      )}
+      {error && <div className="text-red-500">{error}</div>}
+    </div>
+  );
+}
+
+export default function OrderStatusPage() {
+  // Replace with actual selected product IDs from your cart or selection logic
+  const selectedProductIds = [1, 2];
+  return (
     <div className="max-w-md mx-auto p-4 border rounded shadow">
-      <h2 className="text-xl font-bold mb-2">Order Status</h2>
-      <div className="mb-2">Order ID: <span className="font-semibold">{orderId}</span></div>
-      <div className="mb-2">Status: <span className="font-semibold text-blue-600">{status}</span></div>
-      {error && <div className="text-red-600 mt-2">{error}</div>}
+      <h2 className="text-xl font-bold mb-2">Place an Order</h2>
+      <PlaceOrder selectedProductIds={selectedProductIds} />
     </div>
   );
 } 
