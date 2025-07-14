@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function OrderConfirmationCard({ orderId, status, onClose }) {
+export default function OrderConfirmationCard({ orderId, status, assignedBot, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
       <div className="bg-white rounded-lg shadow-lg p-8 max-w-sm w-full text-center">
@@ -8,9 +8,14 @@ export default function OrderConfirmationCard({ orderId, status, onClose }) {
         <div className="mb-2">
           <span className="font-semibold">Order ID:</span> {orderId}
         </div>
-        <div className="mb-4">
-          <span className="font-semibold">Status:</span> {status}
+        <div className="mb-2">
+          <span className="font-semibold">Status:</span> {status === 'ready' ? 'packing' : status}
         </div>
+        {assignedBot && (
+          <div className="mb-2">
+            <span className="font-semibold">Assigned Bot:</span> {assignedBot}
+          </div>
+        )}
         <button
           className="mt-4 px-6 py-2 bg-green-600 text-white rounded font-semibold hover:bg-green-700"
           onClick={onClose}

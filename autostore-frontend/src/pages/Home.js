@@ -11,7 +11,7 @@ export default function Home() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetch('http://localhost:8000/products/')
+    fetch('http://127.0.0.1:8000/products/')
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch products');
         return res.json();

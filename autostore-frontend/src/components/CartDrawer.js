@@ -19,13 +19,13 @@ export default function CartDrawer({ open, onClose }) {
     // Prepare items array for new backend format
     const items = cart.map(item => ({ product_id: item.id, quantity: item.quantity }));
     try {
-      const response = await fetch('http://localhost:8000/orders/', {
+      const response = await fetch('http://127.0.0.1:8000/orders/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items })
       });
       const data = await response.json();
-      setOrderInfo({ orderId: data.order_id, status: data.status });
+      setOrderInfo({ orderId: data.order_id, status: data.status, assignedBot: data.assigned_bot_id });
       setShowConfirmation(true);
       clearCart();
     } catch (error) {
@@ -107,7 +107,7 @@ export default function CartDrawer({ open, onClose }) {
                 onClick={handlePlaceOrder}
                 disabled={cart.length === 0}
               >
-                Login to Proceed &rarr;
+                Place the order &rarr;
               </button>
             </div>
           </div>
@@ -117,6 +117,7 @@ export default function CartDrawer({ open, onClose }) {
         <OrderConfirmationCard
           orderId={orderInfo.orderId}
           status={orderInfo.status}
+          assignedBot={orderInfo.assignedBot}
           onClose={() => {
             setShowConfirmation(false);
             onClose();

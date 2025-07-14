@@ -2,7 +2,7 @@ import React from 'react';
 import { FaTachometerAlt, FaBoxOpen, FaRobot, FaChartBar, FaListAlt } from 'react-icons/fa';
 
 const links = [
-  { name: 'Dashboard', icon: <FaTachometerAlt />, path: '/' },
+  // { name: 'Dashboard', icon: <FaTachometerAlt />, path: '/' },
   { name: 'Orders', icon: <FaListAlt />, path: '/orders' },
   { name: 'Bins', icon: <FaBoxOpen />, path: '/bins' },
   { name: 'Bots', icon: <FaRobot />, path: '/bots' },

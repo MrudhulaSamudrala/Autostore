@@ -83,4 +83,14 @@ def setup_2bots():
         print("Please check your database connection parameters.")
 
 if __name__ == "__main__":
-    setup_2bots() 
+    from db.database import SessionLocal
+    from models.bots import Bot
+    db = SessionLocal()
+    for bot in db.query(Bot).all():
+        bot.status = "idle"
+        bot.assigned_order_id = None
+        bot.destination_bin = None
+        bot.path = None
+    db.commit()
+    db.close()
+    print("All bots reset to idle and cleared.") 

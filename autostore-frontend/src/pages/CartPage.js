@@ -14,11 +14,14 @@ export default function CartPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.post('http://localhost:8000/orders/', null, {
-        params: {
-          customer_name: 'Customer', // You can make this dynamic
-          product_id: product.product_id,
-        },
+      // Send the correct payload format that the backend expects
+      const res = await axios.post('http://127.0.0.1:8000/orders/', {
+        items: [
+          { 
+            product_id: product.id || product.product_id, 
+            quantity: product.quantity || 1 
+          }
+        ]
       });
       navigate(`/order-status/${res.data.order_id}`);
     } catch (err) {

@@ -1,66 +1,130 @@
-import React, { useEffect, useState } from 'react';
-import { FaRobot } from 'react-icons/fa';
-
-const gridSize = 10;
-const mockBots = [
-  { id: 'Bot-1', x: 2, y: 3, status: 'idle' },
-  { id: 'Bot-2', x: 5, y: 7, status: 'busy' },
-  { id: 'Bot-3', x: 8, y: 1, status: 'charging' },
-];
-
-function statusColorClass(status) {
-  switch (status?.toLowerCase()) {
-    case 'idle': return 'bg-green-100 text-green-700';
-    case 'busy': return 'bg-yellow-100 text-yellow-700';
-    case 'charging': return 'bg-blue-100 text-blue-700';
-    case 'moving': return 'bg-purple-100 text-purple-700';
-    case 'packing': return 'bg-pink-100 text-pink-700';
-    default: return 'bg-gray-100 text-gray-700';
-  }
-}
-
-function BotPathPreview({ path }) {
-  return (
-    <svg width={80} height={40}>
-      {path.map((p, i) =>
-        <circle key={i} cx={p[0]*10+10} cy={p[1]*10+10} r={4} fill="#6366f1" />
-      )}
-      {path.length > 1 && path.map((p, i) =>
-        i < path.length-1
-          ? <line key={i} x1={p[0]*10+10} y1={p[1]*10+10} x2={path[i+1][0]*10+10} y2={path[i+1][1]*10+10} stroke="#6366f1" strokeWidth={2} />
-          : null
-      )}
-    </svg>
-  );
-}
-
-function getOrderDetails(orderId, orders) {
-  return orders.find(order => order.id === orderId);
-}
+import React, { useEffect, useState, useRef } from 'react';
 
 export default function BotGridView() {
   const [bots, setBots] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [bins, setBins] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const intervalRef = useRef(null);
+  const assignedOrderCountRef = useRef(0);
+  const prevAssignedOrderIdsRef = useRef(new Set());
+
+  // Function to fetch latest bot data
+  const fetchLatestData = async () => {
+    try {
+      const [botsRes, ordersRes, binsRes] = await Promise.all([
+        fetch('http://127.0.0.1:8000/bots/'),
+        fetch('http://127.0.0.1:8000/orders/'),
+        fetch('http://127.0.0.1:8000/bins/')
+      ]);
+      
+      if (!botsRes.ok) throw new Error('Failed to fetch bots');
+      if (!ordersRes.ok) throw new Error('Failed to fetch orders');
+      if (!binsRes.ok) throw new Error('Failed to fetch bins');
+      
+      const [botsData, ordersData, binsData] = await Promise.all([
+        botsRes.json(),
+        ordersRes.json(),
+        binsRes.json()
+      ]);
+      
+      setBots(botsData);
+      setOrders(ordersData);
+      setBins(binsData);
+      // Track cumulative assigned orders
+      const currentAssignedOrderIds = new Set(
+        botsData
+          .map(bot => bot.assigned_order_id)
+          .filter(id => id !== null && id !== undefined)
+      );
+      // For each new assigned order id not seen before, increment the ref
+      currentAssignedOrderIds.forEach(id => {
+        if (!prevAssignedOrderIdsRef.current.has(id)) {
+          assignedOrderCountRef.current += 1;
+          prevAssignedOrderIdsRef.current.add(id);
+        }
+      });
+      // Do not decrement or remove from the set, so the count only ever increases
+      console.log('[REFRESH] Updated bots data:', botsData, 'Cumulative assigned orders:', assignedOrderCountRef.current);
+    } catch (err) {
+      console.error('[REFRESH] Error:', err);
+      setError(err.message);
+    }
+  };
 
   useEffect(() => {
-    // Fetch bots
-    fetch('http://localhost:8000/bots')
-      .then(res => res.json())
-      .then(setBots);
+    // Initial data fetch
+    fetchLatestData().finally(() => setLoading(false));
 
-    // Fetch orders for order details
-    fetch('http://localhost:8000/orders/')
-      .then(res => res.json())
-      .then(setOrders);
+    // Set up periodic refresh every 3 seconds
+    intervalRef.current = setInterval(() => {
+      console.log('[AUTO REFRESH] Fetching latest data...');
+      fetchLatestData();
+    }, 3000);
 
-    // const ws = new window.WebSocket('ws://localhost:8000/ws/bots');
-    // ws.onmessage = (event) => setBots(JSON.parse(event.data));
-    // return () => ws.close();
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
   }, []);
+
+  // Helper function to get destination bin location with details
+  const getDestinationBinLocation = (bot) => {
+    if (bot.destination_bin && Array.isArray(bot.destination_bin)) {
+      // destination_bin format: [x, y, z, bin_id]
+      const x = bot.destination_bin[0];
+      const y = bot.destination_bin[1];
+      const z = bot.destination_bin[2] || 0;
+      const binId = bot.destination_bin[3];
+      
+      if (binId) {
+        // Find the bin details
+        const bin = bins.find(b => b.id === binId);
+        if (bin) {
+          return `Bin ${binId} at (${x}, ${y}, ${z})`;
+        } else {
+          return `Bin ${binId} (${x}, ${y}, ${z})`;
+        }
+      } else {
+        return `(${x}, ${y}, ${z})`;
+      }
+    }
+    return 'None';
+  };
+
+  // Helper function to get current location
+  const getCurrentLocation = (bot) => {
+    return `(${bot.x}, ${bot.y}, ${bot.current_location_z || bot.z || 0})`;
+  };
+
+  if (loading) return <div className="text-center py-8">Loading bot data...</div>;
+  if (error) return (
+    <div className="text-center py-8">
+      <div className="text-red-500 mb-4">Error: {error}</div>
+      <button
+        onClick={fetchLatestData}
+        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+      >
+        Retry
+      </button>
+    </div>
+  );
 
   return (
     <div>
       <h2 className="text-2xl font-bold mb-6 text-blue-700">Bot Status</h2>
+      
+      {/* Control Buttons */}
+      <div className="flex gap-4 mb-6">
+        <button
+          onClick={fetchLatestData}
+          className="inline-block px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+        >
+          Refresh Bot Data
+        </button>
+      </div>
       
       {/* Bot Statistics */}
       <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -78,67 +142,56 @@ export default function BotGridView() {
         </div>
         <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500">
           <div className="text-sm text-gray-600">Assigned Orders</div>
-          <div className="text-2xl font-bold text-purple-600">{bots.filter(bot => bot.assigned_order_id).length}</div>
+          <div className="text-2xl font-bold text-purple-600">{assignedOrderCountRef.current}</div>
         </div>
       </div>
       
-      <div className="flex flex-wrap gap-6 justify-start">
-        {bots.map(bot => (
-          <div
-            key={bot.id}
-            className="bg-white rounded-2xl shadow-lg p-6 min-w-[260px] max-w-xs transition-transform hover:scale-105 border-2 border-blue-100"
-            style={{ boxShadow: '0 4px 24px 0 rgba(99,102,241,0.08)' }}
-          >
-            <div className="flex items-center gap-3 mb-2">
-              <div className="bg-blue-100 rounded-full p-2">
-                <FaRobot className="text-2xl text-blue-500" />
-              </div>
-              <span className="text-lg font-bold text-blue-700">Bot #{bot.id}</span>
-            </div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusColorClass(bot.status)}`}>{bot.status}</span>
-            </div>
-            <div className="mb-1 text-gray-700"><b>Coordinates:</b> <span className="font-mono">({bot.x}, {bot.y}, {bot.z})</span></div>
-            
-            {/* Assigned Order Details */}
-            {bot.assigned_order_id ? (
-              <div className="mb-3 p-2 bg-blue-50 rounded border border-blue-200">
-                <div className="mb-1 text-gray-700">
-                  <b>Assigned Order:</b> <span className="font-mono text-blue-600">#{bot.assigned_order_id}</span>
-                </div>
-                {(() => {
-                  const orderDetails = getOrderDetails(bot.assigned_order_id, orders);
-                  return orderDetails ? (
-                    <div className="text-xs text-gray-600">
-                      <div><b>Status:</b> <span className={`px-1 py-0.5 rounded text-xs ${statusColorClass(orderDetails.status)}`}>{orderDetails.status}</span></div>
-                      <div><b>Items:</b> {orderDetails.items?.length || 0} products</div>
-                      {orderDetails.items && orderDetails.items.length > 0 && (
-                        <div className="mt-1">
-                          <div className="font-semibold text-xs text-gray-700">Order Items:</div>
-                          {orderDetails.items.slice(0, 2).map((item, idx) => (
-                            <div key={idx} className="text-xs text-gray-600 truncate">
-                              • {item.name?.substring(0, 20)}... (x{item.quantity})
-                            </div>
-                          ))}
-                          {orderDetails.items.length > 2 && (
-                            <div className="text-xs text-gray-500">+{orderDetails.items.length - 2} more items</div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-xs text-gray-500">Loading order details...</div>
-                  );
-                })()}
-              </div>
-            ) : (
-              <div className="mb-1 text-gray-700"><b>Assigned Order:</b> <span className="text-gray-400">None</span></div>
-            )}
-            
-            <div className="mb-1 text-gray-700"><b>Destination Bin:</b> <span className="font-mono">{bot.destination_bin ? `(${bot.destination_bin.join(', ')})` : '-'}</span></div>
-            <div className="mb-1 text-gray-700"><b>Path:</b> <BotPathPreview path={bot.path || []} /></div>
-          </div>
-        ))}
+      {/* Bot Details Table */}
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        <table className="min-w-full">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bot ID</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Location</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Destination Bin Location</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned Order</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {bots.map(bot => {
+              const assignedOrder = orders.find(order => order.id === bot.assigned_order_id);
+              return (
+                <tr key={bot.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    Bot #{bot.id}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                      bot.status === 'idle' ? 'bg-green-100 text-green-800' :
+                      bot.status === 'moving' ? 'bg-blue-100 text-blue-800' :
+                      bot.status === 'packing' ? 'bg-yellow-100 text-yellow-800' :
+                      bot.status === 'delivering' ? 'bg-purple-100 text-purple-800' :
+                      bot.status === 'carrying' ? 'bg-orange-100 text-orange-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {['idle','moving','packing','delivering','carrying','returning'].includes(bot.status) ? bot.status : 'Unknown'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
+                    {getCurrentLocation(bot)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
+                    {getDestinationBinLocation(bot)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {assignedOrder ? `Order #${assignedOrder.id}` : 'None'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );

@@ -3,11 +3,12 @@ import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls as DreiOrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { Html } from '@react-three/drei';
+import axios from 'axios';
 
 const DEFAULT_GRID_SIZE = 6;
 const DEFAULT_GRID_HEIGHT = 6;
 const DEFAULT_BOT_COUNT = 8;
-const DEFAULT_BOT_SPEED = 1.2;
+const DEFAULT_BOT_SPEED = 0.1; // or even 0.05 for ultra-slow
 const binColors = [
   0x4a90e2, 0x7b68ee, 0x20b2aa, 0x32cd32, 0xff6347, 0xffb800, 0xff3366, 0x00ffcc, 0x0088ff, 0x8aff80
 ];
@@ -59,7 +60,7 @@ function GridFramework({ gridSize, gridHeight }) {
   return <>{posts}{railsX}{railsZ}</>;
 }
 
-function Bin({ x, y, z, color, gridSize, binId, productNames, isCarried }) {
+function Bin({ x, y, z, color, gridSize, binId, productNames, isCarried, style }) {
   const binRef = useRef();
   const [hovered, setHovered] = useState(false);
   useEffect(() => {
@@ -67,12 +68,14 @@ function Bin({ x, y, z, color, gridSize, binId, productNames, isCarried }) {
       binRef.current.material.color.setHex(color);
     }
   }, [color]);
+  // If isCarried, don't render the bin in the grid
+  if (isCarried) return null;
   return (
     <group position={[
       x * CELL_SIZE - (gridSize * CELL_SIZE) / 2 + CELL_SIZE / 2,
       y * CELL_SIZE + BIN_SIZE / 2,
       z * CELL_SIZE - (gridSize * CELL_SIZE) / 2 + CELL_SIZE / 2
-    ]}>
+    ]} style={style}>
       <mesh ref={binRef} castShadow receiveShadow
         onPointerOver={isCarried ? () => setHovered(true) : undefined}
         onPointerOut={isCarried ? () => setHovered(false) : undefined}
@@ -155,106 +158,111 @@ function astarGridJS(start, goal, gridSize) {
   return null;
 }
 
-function DetailedBot({ bot, gridSize, gridHeight, botSpeed, paused }) {
-  // Always call hooks first
-  const [step, setStep] = useState(0);
-  const [pos, setPos] = useState(() => gridToWorld([bot.x % gridSize, bot.z % gridSize], gridSize, gridHeight));
-  const [status, setStatus] = useState(bot.status);
-  const speed = botSpeed * 0.07;
-
-  function gridToWorld([gx, gz], gridSize, gridHeight) {
-    return [
-      gx * CELL_SIZE - (gridSize * CELL_SIZE) / 2 + CELL_SIZE / 2,
-      gridHeight * CELL_SIZE + BOT_SIZE / 2,
-      gz * CELL_SIZE - (gridSize * CELL_SIZE) / 2 + CELL_SIZE / 2
-    ];
-  }
-
-  // Reset pos and step when path changes
-  useEffect(() => {
-    if (bot.path && bot.path.length > 0) {
-      setStep(0);
-      setPos(gridToWorld(bot.path[0], gridSize, gridHeight));
-    }
-  }, [bot.path, gridSize, gridHeight]);
-
-  // Move along the backend path
-  useFrame(() => {
-    if (!bot.assigned_order_id || paused || !bot.path || bot.path.length === 0) return;
-    const [tx, tz] = bot.path[step] || bot.path[bot.path.length - 1];
-    let [x, y, z] = pos;
-    const [wx, wy, wz] = gridToWorld([tx, tz], gridSize, gridHeight);
-    const dx = wx - x, dz = wz - z;
-    const dist = Math.sqrt(dx * dx + dz * dz);
-    if (dist > 0.05) {
-      x += (dx / dist) * speed;
-      z += (dz / dist) * speed;
-      setPos([x, y, z]);
-      setStatus('moving');
-    } else if (step < bot.path.length - 1) {
-      setStep(step + 1);
-    } else {
-      setStatus(bot.status);
-    }
-  });
-
-  // If bot is idle (no assigned order), keep it static at its current position
-  if (!bot.assigned_order_id) {
-    const staticPos = [
-      bot.x * CELL_SIZE - (gridSize * CELL_SIZE) / 2 + CELL_SIZE / 2,
-      gridHeight * CELL_SIZE + BOT_SIZE / 2,
-      bot.z * CELL_SIZE - (gridSize * CELL_SIZE) / 2 + CELL_SIZE / 2
-    ];
-    const indicatorColor = INDICATOR_COLORS['idle'] || 0x64748b;
-    const wheelPositions = [
-      [-0.5, -0.2, -0.5],
-      [0.5, -0.2, -0.5],
-      [-0.5, -0.2, 0.5],
-      [0.5, -0.2, 0.5],
-    ];
-    return (
-      <group position={staticPos}>
-        <mesh castShadow receiveShadow>
-          <boxGeometry args={[BOT_SIZE, BOT_SIZE, BOT_SIZE]} />
-          <meshPhongMaterial color={0xff0000} shininess={100} />
-        </mesh>
-        <mesh position={[0, BOT_SIZE / 2 - 0.2, 0.4]}>
-          <cylinderGeometry args={[0.18, 0.18, 0.18, 16]} />
-          <meshPhongMaterial color={indicatorColor} emissive={indicatorColor} emissiveIntensity={0.7} />
-        </mesh>
-        {wheelPositions.map((p, i) => (
-          <mesh key={i} position={p} rotation={[0, 0, Math.PI / 2]}>
-            <cylinderGeometry args={[0.2, 0.2, 0.1, 12]} />
-            <meshPhongMaterial color={0x333333} shininess={50} />
-          </mesh>
-        ))}
-      </group>
-    );
-  }
-  const indicatorColor = INDICATOR_COLORS[status] || 0x64748b;
-  const wheelPositions = [
-    [-0.5, -0.2, -0.5],
-    [0.5, -0.2, -0.5],
-    [-0.5, -0.2, 0.5],
-    [0.5, -0.2, 0.5],
+// Single gridToWorld function for all usage
+function gridToWorld([gx, gy], gridSize, gridHeight) {
+  const CELL_SIZE = 3;
+  const BOT_SIZE = 1.7;
+  return [
+    gx * CELL_SIZE - (gridSize * CELL_SIZE) / 2 + CELL_SIZE / 2,
+    gridHeight * CELL_SIZE + BOT_SIZE / 2,
+    gy * CELL_SIZE - (gridSize * CELL_SIZE) / 2 + CELL_SIZE / 2
   ];
+}
+
+function DetailedBot({ bot, gridSize, gridHeight }) {
+  // Parking positions for each bot
+  const parkingPositions = {
+    1: [5, 5],
+    2: [5, 4],
+    // Add more if needed
+  };
+  const [position, setPosition] = useState(() =>
+    gridToWorld([bot.x, bot.y], gridSize, gridHeight)
+  );
+  const [carriedBin, setCarriedBin] = useState(null);
+  const [currentPath, setCurrentPath] = useState([]);
+
+  useEffect(() => {
+    // Update position when bot moves
+    setPosition(gridToWorld([bot.x, bot.y], gridSize, gridHeight));
+    // Update carried bin
+    setCarriedBin(bot.carried_bin_id ? {
+      id: bot.carried_bin_id,
+      color: binColors[bot.carried_bin_id % binColors.length]
+    } : null);
+    // Animate path if changed
+    if (bot.path && !pathsAreEqual(bot.path, currentPath)) {
+      setCurrentPath(bot.path);
+      animatePath(bot.path);
+    }
+  }, [bot.x, bot.y, bot.path, bot.carried_bin_id]);
+
+  const animatePath = (path) => {
+    let step = 0;
+    const animate = () => {
+      if (step >= path.length) return;
+      const [x, y] = path[step];
+      setPosition(gridToWorld([x, y], gridSize, gridHeight));
+      step++;
+      if (step < path.length) {
+        requestAnimationFrame(animate);
+      }
+    };
+    animate();
+  };
+
+  // Always show bot at parking when idle
+  const isIdle = bot.status === 'idle';
+  const [parkX, parkY] = parkingPositions[bot.id] || [5, 0];
+  const displayPos = isIdle
+    ? gridToWorld([parkX, parkY], gridSize, gridHeight)
+    : position;
 
   return (
-    <group position={pos}>
+    <group position={displayPos}>
+      {/* Path visualization */}
+      {currentPath && currentPath.length > 1 && (
+        <line>
+          <bufferGeometry
+            attach="geometry"
+            setFromPoints={currentPath.map(([x, y]) =>
+              new THREE.Vector3(...gridToWorld([x, y], gridSize, gridHeight))
+            )}
+          />
+          <lineBasicMaterial attach="material" color={0xffff00} linewidth={2} />
+        </line>
+      )}
+      {/* Bot model */}
       <mesh castShadow receiveShadow>
         <boxGeometry args={[BOT_SIZE, BOT_SIZE, BOT_SIZE]} />
-        <meshPhongMaterial color={0xff0000} shininess={100} />
+        <meshStandardMaterial color={bot.id === 1 ? 0xff0000 : 0x0000ff} />
       </mesh>
-      <mesh position={[0, BOT_SIZE / 2 - 0.2, 0.4]}>
-        <cylinderGeometry args={[0.18, 0.18, 0.18, 16]} />
-        <meshPhongMaterial color={indicatorColor} emissive={indicatorColor} emissiveIntensity={0.7} />
-      </mesh>
-      {wheelPositions.map((p, i) => (
-        <mesh key={i} position={p} rotation={[0, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[0.2, 0.2, 0.1, 12]} />
-          <meshPhongMaterial color={0x333333} shininess={50} />
-        </mesh>
-      ))}
+      {/* Carried bin */}
+      {carriedBin && (
+        <group position={[0, BOT_SIZE/2 + BIN_SIZE/2, 0]}>
+          <mesh castShadow receiveShadow>
+            <boxGeometry args={[BIN_SIZE, BIN_SIZE, BIN_SIZE]} />
+            <meshStandardMaterial 
+              color={carriedBin.color} 
+              transparent 
+              opacity={0.9}
+            />
+          </mesh>
+        </group>
+      )}
+      {/* Status indicator */}
+      <Html center>
+        <div style={{
+          background: 'rgba(0,0,0,0.7)',
+          color: '#fff',
+          padding: '4px 8px',
+          borderRadius: 4,
+          fontSize: 12,
+          whiteSpace: 'nowrap'
+        }}>
+          Bot {bot.id}: {bot.status}
+        </div>
+      </Html>
     </group>
   );
 }
@@ -272,7 +280,7 @@ function Bots({ botCount, gridSize, gridHeight, botSpeed, paused, setBotStatusLi
   }, [statuses, setBotStatusList]);
 
   return bots.map((bot, i) => (
-    <DetailedBot key={bot.id} bot={bot} gridSize={gridSize} gridHeight={gridHeight} botSpeed={botSpeed} paused={paused}
+    <DetailedBot key={bot.id} bot={bot} gridSize={gridSize} gridHeight={gridHeight}
       setStatus={s => setStatuses(st => { const arr = [...st]; arr[i] = s; return arr; })} />
   ));
 }
@@ -369,6 +377,19 @@ function SpecialStations({ gridSize, gridHeight }) {
   );
 }
 
+function botsAreEqual(botsA, botsB) {
+  return JSON.stringify(botsA) === JSON.stringify(botsB);
+}
+
+function pathsAreEqual(pathA, pathB) {
+  if (!Array.isArray(pathA) || !Array.isArray(pathB)) return false;
+  if (pathA.length !== pathB.length) return false;
+  for (let i = 0; i < pathA.length; i++) {
+    if (pathA[i][0] !== pathB[i][0] || pathA[i][1] !== pathB[i][1]) return false;
+  }
+  return true;
+}
+
 export default function Bot3DGridView() {
   // Controls state
   const [gridSize, setGridSize] = useState(DEFAULT_GRID_SIZE);
@@ -378,6 +399,9 @@ export default function Bot3DGridView() {
   const [paused, setPaused] = useState(false);
   const [binSeed, setBinSeed] = useState(0);
   const [botStatusList, setBotStatusList] = useState(Array(DEFAULT_BOT_COUNT).fill('idle'));
+  const [connectionStatus, setConnectionStatus] = useState('connected');
+  const [started, setStarted] = useState(false);
+  const [returningBins, setReturningBins] = useState({});
 
   // Real data state
   const [bots, setBots] = useState([]);
@@ -385,37 +409,43 @@ export default function Bot3DGridView() {
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
 
-  // WebSocket for bots
+  // Define fetchBots at the top level of the component
+  const fetchBots = () => {
+    fetch('http://localhost:8000/bots/')
+      .then(res => res.json())
+      .then(data => setBots(data))
+      .catch(err => console.error('Failed to fetch bots:', err));
+  };
+
+  // Add this after bots state is defined
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:8000/ws/bots');
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        setBots(prev => {
-          // Only update if changed
-          if (JSON.stringify(prev) !== JSON.stringify(data)) {
-            setBotCount(data.length); // Always sync botCount
-            return data;
-          }
-          return prev;
-        });
-      } catch (e) {}
-    };
-    ws.onerror = (e) => {};
-    return () => ws.close();
-  }, []);
+    // console.log('Current bots:', bots); // Removed to reduce console spam
+  }, [bots]);
+
+  // Fetch bots from the new /bots/ endpoint
+  useEffect(() => {
+    fetchBots();
+    // Only poll if WebSocket is not connected
+    if (connectionStatus !== 'connected') {
+      const interval = setInterval(fetchBots, 1000); // poll every 1s
+      return () => clearInterval(interval);
+    }
+  }, [connectionStatus]);
 
   // Poll bins, orders, products (unless websocket available)
   useEffect(() => {
     const fetchAll = () => {
-      fetch('http://localhost:8000/bins/').then(res => res.json()).then(setBins);
-      fetch('http://localhost:8000/orders/').then(res => res.json()).then(setOrders);
-      fetch('http://localhost:8000/products/').then(res => res.json()).then(setProducts);
+      fetch('http://127.0.0.1:8000/bins/').then(res => res.json()).then(setBins);
+      fetch('http://127.0.0.1:8000/orders/').then(res => res.json()).then(setOrders);
+      fetch('http://127.0.0.1:8000/products/').then(res => res.json()).then(setProducts);
     };
     fetchAll();
-    const interval = setInterval(fetchAll, 2000); // poll every 2s
-    return () => clearInterval(interval);
-  }, [binSeed]);
+    // Only poll if WebSocket is not connected, and reduce frequency
+    if (connectionStatus !== 'connected') {
+      const interval = setInterval(fetchAll, 5000); // poll every 5s instead of 2s
+      return () => clearInterval(interval);
+    }
+  }, [binSeed, connectionStatus]);
 
   // Map bin id to product names
   const binIdToProductNames = useMemo(() => {
@@ -443,6 +473,23 @@ export default function Bot3DGridView() {
     return ids;
   }, [bots]);
 
+  // Track bins dropped at delivery station
+  const [deliveredBins, setDeliveredBins] = useState([]);
+
+  // Watch bots and update deliveredBins when a bin is dropped
+  useEffect(() => {
+    bots.forEach(bot => {
+      // If bot just finished delivering (status is not 'carrying' or 'delivering', but was previously carrying this bin)
+      if (
+        bot.lastDeliveredBin &&
+        !deliveredBins.includes(bot.lastDeliveredBin)
+      ) {
+        setDeliveredBins(prev => [...prev, bot.lastDeliveredBin]);
+      }
+    });
+    // eslint-disable-next-line
+  }, [bots]);
+
   // System status (use real bins if available)
   const totalCells = gridSize * gridSize;
   const totalBins = bins.length;
@@ -452,18 +499,61 @@ export default function Bot3DGridView() {
   // Handlers
   const handleResetGrid = () => setBinSeed(s => s + 1);
 
+  // Handler to start bot movement
+  // const handleStart = async () => {
+  //   await axios.post('http://localhost:8000/orders/start-processing');
+  //   setStarted(true);
+  // };
+
+  // Add this handler in Bot3DGridView:
+  const handleForceRefreshBins = () => {
+    fetch('http://127.0.0.1:8000/bins/')
+      .then(res => res.json())
+      .then(setBins)
+      .catch(err => console.error('Failed to force refresh bins:', err));
+  };
+
   // Render bins from real data
   function BinsFromState() {
-    return <>{bins.map((bin, i) => (
-      <Bin key={`bin-${bin.id || i}`}
-        x={bin.x} y={bin.y} z={bin.z_location}
-        color={binColors[i % binColors.length]}
-        gridSize={gridSize}
-        binId={bin.id}
-        productNames={binIdToProductNames[bin.id] || []}
-        isCarried={carriedBinIds.has(bin.id)}
-      />
-    ))}</>;
+    const carriedBinIds = new Set(
+      bots.filter(b => b.carried_bin_id).map(b => b.carried_bin_id)
+    );
+    const deliveredBinIds = new Set(deliveredBins);
+
+    return (
+      <>
+        {bins.map(bin => {
+          // Hide bins being carried
+          if (carriedBinIds.has(bin.id)) return null;
+          // Show delivered bins at delivery station
+          if (deliveredBinIds.has(bin.id)) {
+            return (
+              <Bin
+                key={`delivered-${bin.id}`}
+                x={5} y={0} z={0}
+                color={binColors[bin.id % binColors.length]}
+                gridSize={gridSize}
+                binId={bin.id}
+                isCarried={false}
+              />
+            );
+          }
+          // Show bins at grid position
+          return (
+            <Bin
+              key={`bin-${bin.id}`}
+              x={bin.x}
+              y={bin.y}
+              z={bin.z_location}
+              color={binColors[bin.id % binColors.length]}
+              gridSize={gridSize}
+              binId={bin.id}
+              isCarried={false}
+            />
+          );
+        })}
+      </>
+    );
   }
 
   // Only render real bots from backend
@@ -483,42 +573,148 @@ export default function Bot3DGridView() {
     </>;
   }
 
+  useEffect(() => {
+    let ws;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 5;
+    const reconnectDelay = 3000; // 3 seconds
+
+    const connect = () => {
+      if (ws) return;
+
+      console.log('[WS] Connecting to bots WebSocket...');
+      ws = new WebSocket('ws://localhost:8000/ws/bots');
+
+      ws.onopen = () => {
+        console.log('[WS] Connected successfully');
+        setConnectionStatus('connected');
+        reconnectAttempts = 0;
+      };
+
+      ws.onclose = (e) => {
+        console.log('[WS] Disconnected', e);
+        setConnectionStatus('disconnected');
+        ws = null;
+        
+        if (reconnectAttempts < maxReconnectAttempts) {
+          setTimeout(connect, reconnectDelay);
+          reconnectAttempts++;
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.error('[WS] Error:', err);
+        setConnectionStatus('error');
+      };
+
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          console.log('[WS] Message received:', msg);
+
+          // Handle different message types
+          if (msg.event === 'bot_move') {
+            setBots(prev => prev.map(b => 
+              b.id === msg.bot_id ? { 
+                ...b, 
+                x: msg.x, 
+                y: msg.y, 
+                z: msg.z,
+                status: msg.status || b.status,
+                path: msg.path || b.path
+              } : b
+            ));
+          }
+          else if (msg.event === 'bin_pickup') {
+            setBots(prev => prev.map(b => 
+              b.id === msg.bot_id ? { ...b, carried_bin_id: msg.bin_id } : b
+            ));
+          }
+          else if (msg.event === 'bin_drop') {
+            setDeliveredBins(prev => [...prev, msg.bin_id]);
+            setBots(prev => prev.map(b => 
+              b.id === msg.bot_id ? { ...b, carried_bin_id: null } : b
+            ));
+          }
+        } catch (err) {
+          console.error('[WS] Message parse error:', err);
+        }
+      };
+    };
+
+    connect();
+
+    return () => {
+      if (ws) {
+        console.log('[WS] Cleaning up connection');
+        ws.close();
+      }
+    };
+  }, []);
+
+  // Add debug log for bots state in render
+  // console.log('[RENDER] Current bots state:', bots); // Removed to reduce console spam
+
+  // Check if there are ready orders
+  // const hasReadyOrders = useMemo(() => orders.some(o => o.status === 'ready'), [orders]);
+
+  // Remove the Bot Controller UI section from the returned JSX
   return (
     <div className="w-full h-[calc(100vh-120px)] flex flex-row items-center justify-center bg-gradient-to-br from-[#0a0a0f] via-[#1a1a2e] to-[#0f0f23] rounded-xl shadow-xl p-6 box-border">
-      {/* Left Panel */}
-      <div
-        className="bg-[#15152a] bg-opacity-95 border border-cyan-400/30 rounded-2xl shadow-xl p-6 m-6 min-w-[260px] max-w-xs flex-shrink-0 text-base"
-        style={{
-          background: 'rgba(21,21,42,0.95)',
-          border: '1px solid rgba(0,255,200,0.3)',
-          borderRadius: '1rem',
-          boxShadow: '0 8px 32px rgba(0,255,200,0.1)',
-          padding: '1.5rem',
-          margin: '1.5rem',
-          minWidth: 260,
-          maxWidth: 340,
-        }}
-      >
-        <h3 className="text-white text-xl font-bold mb-4">Grid Controller</h3>
-        <div className="mb-4">
-          <label className="block text-gray-300 mb-1">Grid Size: <span className="text-cyan-300 font-bold">{gridSize}x{gridSize}</span></label>
-          <input type="range" min={4} max={16} value={gridSize} onChange={e => setGridSize(Number(e.target.value))} className="w-full" />
+      {/* Connection status indicator */}
+      <div style={{ position: 'absolute', top: 18, right: 32, zIndex: 10 }}>
+        <span style={{
+          display: 'inline-block',
+          width: 14,
+          height: 14,
+          borderRadius: '50%',
+          background: connectionStatus === 'connected' ? '#22c55e' : connectionStatus === 'error' ? '#f87171' : '#facc15',
+          marginRight: 8,
+          border: '2px solid #fff',
+          boxShadow: '0 0 4px #0008',
+        }} />
+        <span style={{ color: '#fff', fontWeight: 600, fontSize: 14 }}>
+          {connectionStatus === 'connected' ? 'Live' : connectionStatus === 'error' ? 'Error' : 'Reconnecting...'}
+        </span>
+      </div>
+      {/* Left Panel: Grid Controller */}
+      <div className="flex flex-col items-start gap-6 mr-8" style={{ minWidth: 340, maxWidth: 400, width: 340 }}>
+        <div className="bg-[#181825] rounded-lg p-8 shadow-md w-full">
+          <h2 className="text-lg font-semibold mb-4 text-white">Grid Controller</h2>
+          {/* Grid size slider */}
+          <div className="mb-4">
+            <label className="block text-white mb-1">Grid Size</label>
+            <input type="range" min={5} max={12} value={gridSize} onChange={e => setGridSize(Number(e.target.value))} className="w-full" />
+            <div className="text-xs text-gray-300 mt-1">{gridSize} x {gridSize}</div>
+          </div>
+          {/* Grid height slider */}
+          <div className="mb-4">
+            <label className="block text-white mb-1">Grid Height</label>
+            <input type="range" min={3} max={8} value={gridHeight} onChange={e => setGridHeight(Number(e.target.value))} className="w-full" />
+            <div className="text-xs text-gray-300 mt-1">{gridHeight} levels</div>
+          </div>
+          {/* Reset grid button */}
+          <button onClick={handleResetGrid} className="w-full bg-[#6366f1] text-white py-2 px-4 rounded mb-2 mt-2 hover:bg-[#4f46e5] transition">Reset Grid</button>
+          {/* Force Refresh Bins button */}
+          <button
+            onClick={handleForceRefreshBins}
+            className="w-full bg-[#00bcd4] text-white py-2 px-4 rounded mt-2 hover:bg-[#0097a7] transition"
+          >
+            Force Refresh Bins
+          </button>
+          {/* Temporary Test CORS button */}
+          <button
+            onClick={() => {
+              fetch('http://localhost:8000/test-cors')
+                .then(res => res.json())
+                .then(data => console.log('CORS test result:', data))
+                .catch(err => console.error('CORS test error:', err));
+            }}
+            className="w-full bg-[#f39c12] text-white py-2 px-4 rounded mt-2 hover:bg-[#e67e22] transition"
+          >
+            Test CORS (Console)
+          </button>
         </div>
-        <div className="mb-4">
-          <label className="block text-gray-300 mb-1">Grid Height: <span className="text-cyan-300 font-bold">{gridHeight} levels</span></label>
-          <input type="range" min={4} max={16} value={gridHeight} onChange={e => setGridHeight(Number(e.target.value))} className="w-full" />
-        </div>
-        <button onClick={handleResetGrid} className="w-full bg-cyan-400 hover:bg-cyan-500 text-[#15152a] font-bold py-2 rounded-lg mb-6 transition text-base">Reset Grid</button>
-        <h3 className="text-white text-xl font-bold mb-4">Bot Controller</h3>
-        <div className="mb-4">
-          <label className="block text-gray-300 mb-1">Bot Count: <span className="text-cyan-300 font-bold">{botCount} robots</span></label>
-          <input type="range" min={1} max={24} value={botCount} onChange={e => { setBotCount(Number(e.target.value)); setBotStatusList(Array(Number(e.target.value)).fill('idle')); }} className="w-full" />
-        </div>
-        <div className="mb-4">
-          <label className="block text-gray-300 mb-1">Bot Speed: <span className="text-cyan-300 font-bold">{botSpeed.toFixed(1)}x</span></label>
-          <input type="range" min={0.5} max={3} step={0.1} value={botSpeed} onChange={e => setBotSpeed(Number(e.target.value))} className="w-full" />
-        </div>
-        <button onClick={() => setPaused(p => !p)} className={`w-full font-bold py-2 rounded-lg transition text-base ${paused ? 'bg-pink-500 text-white' : 'bg-green-400 text-[#15152a]'}`}>{paused ? 'Play' : 'Pause'}</button>
       </div>
       {/* 3D Visualization Centered */}
       <div className="flex-1 flex items-center justify-center min-w-0 max-w-[1000px] max-h-[1000px] w-full h-full aspect-square overflow-hidden">
@@ -533,30 +729,21 @@ export default function Bot3DGridView() {
           <CenteredOrbitControls gridSize={gridSize} gridHeight={gridHeight} />
         </Canvas>
       </div>
-      {/* Right Panel */}
-      <div
-        className="bg-[#15152a] bg-opacity-95 border border-cyan-400/30 rounded-2xl shadow-xl p-6 m-6 min-w-[260px] max-w-xs flex-shrink-0 text-base"
-        style={{
-          background: 'rgba(21,21,42,0.95)',
-          border: '1px solid rgba(0,255,200,0.3)',
-          borderRadius: '1rem',
-          boxShadow: '0 8px 32px rgba(0,255,200,0.1)',
-          padding: '1.5rem',
-          margin: '1.5rem',
-          minWidth: 260,
-          maxWidth: 340,
-        }}
-      >
-        <h3 className="text-white text-xl font-bold mb-4">System Status</h3>
-        <div className="mb-2 flex justify-between text-gray-300"><span>Grid Cells:</span><span className="text-cyan-300 font-bold">{totalCells}</span></div>
-        <div className="mb-2 flex justify-between text-gray-300"><span>Total Bins:</span><span className="text-cyan-300 font-bold">{totalBins}</span></div>
-        <div className="mb-2 flex justify-between text-gray-300"><span>Storage Density:</span><span className="text-cyan-300 font-bold">{density}x</span></div>
-        <div className="mb-2 flex justify-between text-gray-300"><span>Active Robots:</span><span className="text-cyan-300 font-bold">{activeRobots}</span></div>
-        <h4 className="text-white text-lg font-bold mt-6 mb-2">Bot Status</h4>
-        <div className="space-y-1">
+      {/* Right Panel (System Status, Bot Status, etc.) remains unchanged */}
+      <div className="ml-8 flex flex-col items-start justify-start min-w-[260px] max-w-[320px]">
+        <div className="bg-slate-900 rounded-xl shadow-lg p-6 w-full mb-4">
+          <div className="text-lg font-bold text-cyan-300 mb-2">System Status</div>
+          <div className="mb-2 text-slate-300">Grid Cells: <span className="font-bold">{totalCells}</span></div>
+          <div className="mb-2 text-slate-300">Total Bins: <span className="font-bold">{totalBins}</span></div>
+          <div className="mb-2 text-slate-300">Storage Density: <span className="font-bold text-cyan-300">{density}x</span></div>
+          <div className="mb-2 text-slate-300">Active Robots: <span className="font-bold">{activeRobots}</span></div>
+        </div>
+        <div className="bg-slate-900 rounded-xl shadow-lg p-6 w-full">
+          <div className="text-lg font-bold text-cyan-300 mb-2">Bot Status</div>
           {bots.map((bot, i) => (
-            <div key={bot.id} className="bg-slate-800 rounded px-3 py-1 mb-1 text-slate-100 text-sm font-mono">
-              Robot {i + 1}: {bot.status ? bot.status.toUpperCase() : 'IDLE'}
+            <div key={bot.id} className="mb-2 px-2 py-1 rounded bg-slate-800 text-slate-200 flex items-center justify-between">
+              <span>Robot {bot.id}:</span>
+              <span className="ml-2 font-mono text-xs">{bot.status.toUpperCase()}</span>
             </div>
           ))}
         </div>
